@@ -89,13 +89,14 @@ const summary = computed(() => {
       </h1>
       <button class="nav" @click="move(1)">›</button>
       <button class="nav px-3 text-sm" @click="goToday">오늘</button>
-      <span v-if="loading" class="text-xs text-slate-400">…</span>
+      <span class="w-4 text-xs text-slate-400">{{ loading ? '…' : '' }}</span>
       <button class="ml-auto rounded-lg bg-slate-800 px-3 py-1.5 text-xs text-white" @click="fillWeekdays">
         평일 자출 채우기
       </button>
     </header>
 
-    <p v-if="error" class="mb-2 rounded bg-red-50 p-2 text-sm text-red-700">⚠ {{ error }}</p>
+    <!-- 에러는 화면 위에 띄워서 달력 위치가 밀리지 않게 -->
+    <p v-if="error" class="fixed inset-x-3 bottom-3 z-20 rounded-lg bg-red-600 p-3 text-sm text-white shadow-lg">⚠ {{ error }}</p>
 
     <!-- 브러시 팔레트 -->
     <div class="sticky top-0 z-10 -mx-1 mb-3 flex gap-1.5 bg-slate-50/95 px-1 py-2">
