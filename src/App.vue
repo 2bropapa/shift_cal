@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { useShifts, fmt } from './composables/useShifts'
 import { HOLIDAYS } from './lib/holidays'
 
@@ -12,8 +12,8 @@ const TYPES = {
   휴무: 'bg-rose-500 text-white',
 }
 const DOW = ['일', '월', '화', '수', '목', '금', '토']
+const MEMO = '메모' // 브러시 값: 근무 종류 / null(지우개) / MEMO(메모 입력)
 
-// 현재 브러시 (null = 지우개)
 const brush = ref('자출')
 
 // 달력
@@ -29,7 +29,8 @@ const days = computed(() => {
   })
 })
 const range = computed(() => ({ from: days.value[0].date, to: days.value[41].date }))
-const { map, loading, error, setLocal, commit } = useShifts(range)
+const { rows, loading, error, setLocal, commit, saveMemo } = useShifts(range)
+const typeOf = (date) => rows.value[date]?.shift_type || null
 
 const move = (n) => (cursor.value = new Date(cursor.value.getFullYear(), cursor.value.getMonth() + n, 1))
 const goToday = () => (cursor.value = new Date(new Date().getFullYear(), new Date().getMonth(), 1))
@@ -48,6 +49,7 @@ const dateAt = (x, y) => document.elementFromPoint(x, y)?.closest('[data-date]')
 function onDown(e) {
   const date = e.target.closest('[data-date]')?.dataset.date
   if (!date) return
+  if (brush.value === MEMO) return openMemo(date) // 메모 모드: 입력창 열기
   painting = true
   touched = new Set()
   paint(date)
@@ -66,16 +68,37 @@ async function onUp() {
 // 이번 달 비어있는 평일을 자출로 채우기
 async function fillWeekdays() {
   const dates = days.value
-    .filter((d) => d.inMonth && d.dow >= 1 && d.dow <= 5 && !map.value[d.date])
+    .filter((d) => d.inMonth && d.dow >= 1 && d.dow <= 5 && !typeOf(d.date))
     .map((d) => d.date)
   dates.forEach((d) => setLocal(d, '자출'))
   await commit(dates, '자출')
 }
 
+// 메모 입력창
+const memoDate = ref(null)
+const memoText = ref('')
+const memoInput = ref(null)
+const memoLabel = computed(() => {
+  if (!memoDate.value) return ''
+  const d = new Date(memoDate.value + 'T00:00:00')
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 (${DOW[d.getDay()]})`
+})
+function openMemo(date) {
+  memoDate.value = date
+  memoText.value = rows.value[date]?.memo || ''
+  nextTick(() => memoInput.value?.focus())
+}
+async function submitMemo(clear = false) {
+  const date = memoDate.value
+  const text = clear ? '' : memoText.value.trim()
+  memoDate.value = null
+  await saveMemo(date, text)
+}
+
 // 이번 달 집계
 const summary = computed(() => {
   const s = Object.fromEntries(Object.keys(TYPES).map((t) => [t, 0]))
-  for (const d of days.value) if (d.inMonth && map.value[d.date]) s[map.value[d.date]]++
+  for (const d of days.value) if (d.inMonth && typeOf(d.date)) s[typeOf(d.date)]++
   return s
 })
 </script>
@@ -109,7 +132,12 @@ const summary = computed(() => {
         @click="brush = t"
       >{{ t }}</button>
       <button
-        class="w-14 rounded-xl py-2.5 text-sm font-bold transition"
+        class="w-12 rounded-xl py-2.5 text-sm font-bold transition"
+        :class="brush === MEMO ? 'bg-emerald-600 text-white shadow-lg ring-4 ring-slate-300' : 'bg-white text-emerald-700 ring-1 ring-emerald-200'"
+        @click="brush = MEMO"
+      >메모</button>
+      <button
+        class="w-12 rounded-xl py-2.5 text-sm font-bold transition"
         :class="brush === null ? 'bg-slate-700 text-white shadow-lg ring-4 ring-slate-300' : 'bg-white text-slate-500 ring-1 ring-slate-200'"
         @click="brush = null"
       >지움</button>
@@ -125,7 +153,7 @@ const summary = computed(() => {
           v-for="d in days"
           :key="d.date"
           :data-date="d.date"
-          class="flex h-20 cursor-pointer flex-col items-center justify-start gap-0.5 border-b border-r border-slate-100 pt-1 sm:h-24"
+          class="flex h-24 cursor-pointer flex-col items-center justify-start gap-0.5 overflow-hidden border-b border-r border-slate-100 pt-1 sm:h-28"
           :class="[d.inMonth ? '' : 'opacity-35', HOLIDAYS[d.date] ? 'bg-red-50/60' : '']"
         >
           <span
@@ -137,10 +165,14 @@ const summary = computed(() => {
           >{{ d.day }}</span>
           <span class="pointer-events-none h-3 w-full truncate text-center text-[9px] leading-3 text-red-500 sm:text-[10px]">{{ HOLIDAYS[d.date] || '' }}</span>
           <span
-            v-if="map[d.date]"
+            v-if="typeOf(d.date)"
             class="pointer-events-none w-[86%] rounded-md py-0.5 text-center text-[11px] font-bold sm:text-xs"
-            :class="TYPES[map[d.date]]"
-          >{{ map[d.date] }}</span>
+            :class="TYPES[typeOf(d.date)]"
+          >{{ typeOf(d.date) }}</span>
+          <span
+            v-if="rows[d.date]?.memo"
+            class="pointer-events-none line-clamp-2 w-full break-all px-0.5 text-center text-[10px] leading-tight text-emerald-700"
+          >{{ rows[d.date].memo }}</span>
         </div>
       </div>
     </div>
@@ -151,7 +183,26 @@ const summary = computed(() => {
         {{ t }} <b>{{ n }}</b>일
       </span>
     </div>
-    <p class="mt-3 text-xs text-slate-400">위에서 종류를 고르고 → 날짜를 누르거나 드래그해서 칠하세요.</p>
+    <p class="mt-3 text-xs text-slate-400">종류를 고르고 날짜를 누르거나 드래그해서 칠하세요. 「메모」를 고르고 날짜를 누르면 메모를 쓸 수 있어요.</p>
+
+    <!-- 메모 입력창 -->
+    <div v-if="memoDate" class="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4" @click.self="memoDate = null">
+      <form class="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl" @submit.prevent="submitMemo()">
+        <h2 class="mb-2 font-bold text-slate-800">{{ memoLabel }} 메모</h2>
+        <input
+          ref="memoInput"
+          v-model="memoText"
+          maxlength="100"
+          placeholder="예) 병원, 아이 학교 행사"
+          class="w-full rounded border border-slate-300 px-2 py-2 text-sm select-text"
+        />
+        <div class="mt-3 flex gap-2">
+          <button type="button" class="rounded-lg px-3 py-2 text-sm text-rose-600 ring-1 ring-rose-200" @click="submitMemo(true)">삭제</button>
+          <button type="button" class="ml-auto rounded-lg px-3 py-2 text-sm text-slate-500 ring-1 ring-slate-200" @click="memoDate = null">취소</button>
+          <button class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white">저장</button>
+        </div>
+      </form>
+    </div>
   </div>
 </template>
 

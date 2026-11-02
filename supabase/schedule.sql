@@ -1,7 +1,8 @@
 -- Supabase > SQL Editor 에서 실행 (하루 1칸 근무표 테이블)
 create table if not exists public.schedule (
   work_date  date primary key,
-  shift_type text not null check (shift_type in ('휴무','자출','DAY','SW','GY')),
+  shift_type text check (shift_type in ('휴무','자출','DAY','SW','GY')),
+  memo       text not null default '' check (char_length(memo) <= 100),
   updated_at timestamptz not null default now()
 );
 
