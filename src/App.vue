@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useShifts, fmt } from './composables/useShifts'
+import { HOLIDAYS } from './lib/holidays'
 
 // 근무 종류 / 색상
 const TYPES = {
@@ -124,16 +125,17 @@ const summary = computed(() => {
           v-for="d in days"
           :key="d.date"
           :data-date="d.date"
-          class="flex h-16 cursor-pointer flex-col items-center justify-start gap-1 border-b border-r border-slate-100 pt-1 sm:h-20"
-          :class="d.inMonth ? '' : 'opacity-35'"
+          class="flex h-20 cursor-pointer flex-col items-center justify-start gap-0.5 border-b border-r border-slate-100 pt-1 sm:h-24"
+          :class="[d.inMonth ? '' : 'opacity-35', HOLIDAYS[d.date] ? 'bg-red-50/60' : '']"
         >
           <span
             class="pointer-events-none flex h-6 w-6 items-center justify-center rounded-full text-xs"
             :class="[
               d.date === todayStr ? 'bg-slate-800 font-bold text-white' : '',
-              d.dow === 0 ? 'text-red-500' : d.dow === 6 ? 'text-blue-500' : 'text-slate-700',
+              d.date === todayStr ? '' : HOLIDAYS[d.date] || d.dow === 0 ? 'text-red-500' : d.dow === 6 ? 'text-blue-500' : 'text-slate-700',
             ]"
           >{{ d.day }}</span>
+          <span class="pointer-events-none h-3 w-full truncate text-center text-[9px] leading-3 text-red-500 sm:text-[10px]">{{ HOLIDAYS[d.date] || '' }}</span>
           <span
             v-if="map[d.date]"
             class="pointer-events-none w-[86%] rounded-md py-0.5 text-center text-[11px] font-bold sm:text-xs"
