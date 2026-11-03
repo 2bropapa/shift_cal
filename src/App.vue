@@ -12,9 +12,10 @@ const TYPES = {
   휴무: 'bg-rose-500 text-white',
 }
 const DOW = ['일', '월', '화', '수', '목', '금', '토']
-const MEMO = '메모' // 브러시 값: 근무 종류 / null(지우개) / MEMO(메모 입력)
+const MEMO = '메모' // 브러시 값: 근무 종류 / null(지우개) / MEMO(메모 입력) / VIEW(보기·스와이프)
+const VIEW = '보기'
 
-const brush = ref('자출')
+const brush = ref(VIEW)
 
 // 달력
 const cursor = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1))
@@ -46,7 +47,14 @@ function paint(date) {
 }
 const dateAt = (x, y) => document.elementFromPoint(x, y)?.closest('[data-date]')?.dataset.date
 
+// 보기 모드: 좌우 스와이프로 월 이동 (왼쪽으로 밀면 다음 달, 오른쪽으로 밀면 이전 달)
+let swipe = null
+function onRootDown(e) {
+  if (brush.value === VIEW) swipe = { x: e.clientX, y: e.clientY }
+}
+
 function onDown(e) {
+  if (brush.value === VIEW) return
   const date = e.target.closest('[data-date]')?.dataset.date
   if (!date) return
   if (brush.value === MEMO) return openMemo(date) // 메모 모드: 입력창 열기
@@ -57,7 +65,14 @@ function onDown(e) {
 function onMove(e) {
   if (painting) paint(dateAt(e.clientX, e.clientY))
 }
-async function onUp() {
+async function onUp(e) {
+  if (swipe) {
+    const dx = e.clientX - swipe.x
+    const dy = e.clientY - swipe.y
+    swipe = null
+    if (e.type === 'pointerup' && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) move(dx < 0 ? 1 : -1)
+    return
+  }
   if (!painting) return
   painting = false
   const dates = [...touched]
@@ -104,7 +119,13 @@ const summary = computed(() => {
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl select-none p-3 sm:p-6" @pointerup="onUp" @pointercancel="onUp">
+  <div
+    class="mx-auto min-h-screen max-w-3xl select-none p-3 sm:p-6"
+    :style="{ touchAction: brush === VIEW ? 'pan-y' : 'auto' }"
+    @pointerdown="onRootDown"
+    @pointerup="onUp"
+    @pointercancel="onUp"
+  >
     <!-- 월 이동 -->
     <header class="mb-3 flex items-center gap-2">
       <button class="nav" @click="move(-1)">‹</button>
@@ -123,21 +144,26 @@ const summary = computed(() => {
     <p v-if="error" class="fixed inset-x-3 bottom-3 z-20 rounded-lg bg-red-600 p-3 text-sm text-white shadow-lg">⚠ {{ error }}</p>
 
     <!-- 브러시 팔레트 -->
-    <div class="sticky top-0 z-10 -mx-1 mb-3 flex gap-1.5 bg-slate-50/95 px-1 py-2">
+    <div class="sticky top-0 z-10 -mx-1 mb-3 flex gap-1 bg-slate-50/95 px-1 py-2">
+      <button
+        class="min-w-0 flex-1 rounded-xl py-2.5 text-xs font-bold transition sm:text-sm"
+        :class="brush === VIEW ? 'bg-slate-800 text-white shadow-lg ring-4 ring-slate-300' : 'bg-white text-slate-500 ring-1 ring-slate-200'"
+        @click="brush = VIEW"
+      >보기</button>
       <button
         v-for="(c, t) in TYPES"
         :key="t"
-        class="flex-1 rounded-xl py-2.5 text-sm font-bold transition"
+        class="min-w-0 flex-1 rounded-xl py-2.5 text-xs font-bold transition sm:text-sm"
         :class="brush === t ? c + ' scale-105 shadow-lg ring-4 ring-slate-300' : 'bg-white text-slate-500 ring-1 ring-slate-200'"
         @click="brush = t"
       >{{ t }}</button>
       <button
-        class="w-12 rounded-xl py-2.5 text-sm font-bold transition"
+        class="min-w-0 flex-1 rounded-xl py-2.5 text-xs font-bold transition sm:text-sm"
         :class="brush === MEMO ? 'bg-emerald-600 text-white shadow-lg ring-4 ring-slate-300' : 'bg-white text-emerald-700 ring-1 ring-emerald-200'"
         @click="brush = MEMO"
       >메모</button>
       <button
-        class="w-12 rounded-xl py-2.5 text-sm font-bold transition"
+        class="min-w-0 flex-1 rounded-xl py-2.5 text-xs font-bold transition sm:text-sm"
         :class="brush === null ? 'bg-slate-700 text-white shadow-lg ring-4 ring-slate-300' : 'bg-white text-slate-500 ring-1 ring-slate-200'"
         @click="brush = null"
       >지움</button>
@@ -148,7 +174,7 @@ const summary = computed(() => {
       <div class="grid grid-cols-7 border-b border-slate-200 bg-slate-50 text-center text-xs font-medium">
         <div v-for="(w, i) in DOW" :key="w" class="py-2" :class="i === 0 ? 'text-red-500' : i === 6 ? 'text-blue-500' : 'text-slate-500'">{{ w }}</div>
       </div>
-      <div class="grid grid-cols-7" style="touch-action: none" @pointerdown="onDown" @pointermove="onMove">
+      <div class="grid grid-cols-7" :style="{ touchAction: brush === VIEW ? 'pan-y' : 'none' }" @pointerdown="onDown" @pointermove="onMove">
         <div
           v-for="d in days"
           :key="d.date"
@@ -183,7 +209,7 @@ const summary = computed(() => {
         {{ t }} <b>{{ n }}</b>일
       </span>
     </div>
-    <p class="mt-3 text-xs text-slate-400">종류를 고르고 날짜를 누르거나 드래그해서 칠하세요. 「메모」를 고르고 날짜를 누르면 메모를 쓸 수 있어요.</p>
+    <p class="mt-3 text-xs text-slate-400">「보기」에서는 좌우로 밀어 달이 바뀝니다. 입력하려면 종류를 고르고 날짜를 누르거나 드래그하세요. 「메모」는 날짜를 누르면 쓸 수 있어요.</p>
 
     <!-- 메모 입력창 -->
     <div v-if="memoDate" class="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4" @click.self="memoDate = null">
